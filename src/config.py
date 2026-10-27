@@ -18,3 +18,19 @@ REVIEW_DAYS = 1              # store reorders once a day
 SERVICE_Z = 1.65             # ~95% cycle service level
 CV_BY_CLASS = {"A": 0.30, "B": 0.50, "C": 0.80}   # assumed day-to-day demand variability
 SEED = 7
+
+# ---- Inventory accuracy and cycle counting (assumptions) ----
+SIM_DAYS = 60
+MISPICK_RATE = 0.0015          # share of pick lines where the wrong item or quantity is taken
+DAMAGE_RATE = {"produce": 0.004, "dairy eggs": 0.002, "bakery": 0.003}   # unrecorded write-offs per unit sold
+DAMAGE_RATE_DEFAULT = 0.0005
+RECEIVING_ERROR_RATE = 0.01   # share of replenishment receipts booked with the wrong quantity
+COUNT_SECONDS = 40            # time to count one SKU location
+COUNT_HOURS_PER_DAY = 2.0     # daily cycle-count labour budget
+SHORT_PICK_FLAG_PROB = 0.5    # chance a picker flags a short pick when shelf < system
+
+# ---- Capacity and new-store planning (assumptions) ----
+PICKERS_ON_SHIFT = 12
+PACK_STATIONS = 3
+PACK_SECONDS = 45             # packing time per order at a station
+NEW_STORE_DAILY_ORDERS = 2000

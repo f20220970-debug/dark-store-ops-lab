@@ -1,0 +1,4 @@
+layout,daily_orders,peak_hour_orders,pickers_at_peak,pack_stations
+category (baseline),2000,207.3,22,4
+velocity within category,2000,207.3,19,4
+pure velocity,2000,207.3,19,4

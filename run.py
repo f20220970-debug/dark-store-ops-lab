@@ -18,6 +18,8 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 import capacity as Q  # noqa: E402
+import capacity_plan as CP  # noqa: E402
+import inventory_accuracy as IA  # noqa: E402
 import config as C  # noqa: E402
 import layout as L  # noqa: E402
 import replenishment as R  # noqa: E402
@@ -46,14 +48,16 @@ def load(data: Path):
         JOIN sample USING (order_id) JOIN carried USING (product_id)""").df()
     hours = con.execute(f"""SELECT CAST(order_hour_of_day AS INTEGER) AS hour, COUNT(*) AS orders
         FROM read_csv_auto('{p('orders.csv')}') GROUP BY 1 ORDER BY 1""").df()
-    return skus, lines, hours, total_lines
+    days = con.execute(f"""SELECT CAST(order_dow AS INTEGER) AS dow, COUNT(*) AS orders
+        FROM read_csv_auto('{p('orders.csv')}') GROUP BY 1 ORDER BY 1""").df()
+    return skus, lines, hours, total_lines, days
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(ROOT / "data"))
     a = ap.parse_args()
-    skus, lines, hours, total_lines = load(Path(a.data))
+    skus, lines, hours, total_lines, days = load(Path(a.data))
     coverage = skus["picks"].sum() / total_lines
     skus = R.abc(skus)
 
@@ -81,7 +85,26 @@ def main():
                                       avg_min=("min_units", "mean"), avg_max=("max_units", "mean")).reset_index()
     by_class["share_of_picks"] = (by_class["share_of_picks"] / rep["picks"].sum()).round(3)
 
+    acc = IA.compare(rep)
+    peak_hour_share = hours["share"].max()
+    peak_day_factor = days["orders"].max() / days["orders"].mean()
+    cap = []
+    for _, row in perf.iterrows():
+        t = CP.throughput(row["avg_pick_seconds"])
+        cap.append({"layout": row["layout"], **{k: (round(v, 1) if isinstance(v, float) else v) for k, v in t.items()}})
+    cap = pd.DataFrame(cap)
+    peak_now = C.DAILY_ORDERS * peak_day_factor * peak_hour_share
+    new_store = pd.DataFrame([{"layout": r["layout"], **CP.size_store(C.NEW_STORE_DAILY_ORDERS, peak_hour_share, peak_day_factor, r["avg_pick_seconds"])}
+                              for _, r in perf.iterrows()])
+
     (ROOT / "results").mkdir(exist_ok=True); (ROOT / "charts").mkdir(exist_ok=True)
+    acc.round(4).to_csv(ROOT / "results/cycle_count_policies.csv", index=False)
+    cap.to_csv(ROOT / "results/peak_throughput.csv", index=False)
+    new_store.to_csv(ROOT / "results/new_store_sizing.csv", index=False)
+    fig, ax = plt.subplots(figsize=(7, 3.6))
+    ax.bar(acc["policy"], 100 * acc["pick_weighted_inaccuracy"], color=["#9DB4C0", "#2C7A7B", "#1F3A5F"])
+    ax.set_ylabel("% of picks from a wrong record"); ax.set_title(f"Cycle-count policies, same budget ({int(acc.iloc[0].counts_per_day)} counts/day)")
+    fig.tight_layout(); fig.savefig(ROOT / "charts/cycle_count_policies.png", dpi=120); plt.close(fig)
     perf.to_csv(ROOT / "results/layout_comparison.csv", index=False)
     staff.round(2).to_csv(ROOT / "results/staffing_by_hour.csv", index=False)
     rep.head(50).round(2).to_csv(ROOT / "results/min_max_top50.csv", index=False)
@@ -119,6 +142,20 @@ def main():
         f"- Staffing at {C.DAILY_ORDERS:,} orders/day, {int(C.SLA_TARGET * 100)}% of orders starting within {C.SLA_WAIT_SECONDS} s: "
         + ", ".join(f"{k}: {v} picker-hours/day" for k, v in picker_hours.items()) + ".",
         f"- Replenishment (1-day lead time, daily review, ~95% service): A-class SKUs average min {a_row.avg_min:.0f} / max {a_row.avg_max:.0f} units.",
+    ]
+    u, ab, ex = acc.iloc[0], acc.iloc[1], acc.iloc[2]
+    c0, c1 = cap.iloc[0], cap.iloc[1]
+    ns0, ns1 = new_store.iloc[0], new_store.iloc[1]
+    lines_md += [
+        f"- Inventory accuracy (simulated {C.SIM_DAYS} days, {int(u.counts_per_day)} counts/day): picks from a wrong record fall from "
+        f"{100 * u.pick_weighted_inaccuracy:.1f}% (uniform counting) to {100 * ab.pick_weighted_inaccuracy:.1f}% (ABC) and "
+        f"{100 * ex.pick_weighted_inaccuracy:.1f}% (ABC + short-pick exceptions) with the same labour; error sources: "
+        f"damage {100 * u.cause_damage:.0f}%, mis-picks {100 * u['cause_mis-pick']:.0f}%, receiving {100 * u.cause_receiving:.0f}%.",
+        f"- Peak load: busiest day is {peak_day_factor:.2f}x an average day and the busiest hour takes {100 * peak_hour_share:.1f}% of orders, "
+        f"so a 1,200-order store peaks at ~{peak_now:.0f} orders/hour. With {C.PICKERS_ON_SHIFT} pickers and {C.PACK_STATIONS} packing stations, "
+        f"max throughput is {c0.max_orders_per_h:.0f}/h with category slotting ({c0.binding} bind) and {c1.max_orders_per_h:.0f}/h with velocity-within-category ({c1.binding} bind).",
+        f"- New store at {C.NEW_STORE_DAILY_ORDERS:,} orders/day: peak hour ~{ns0.peak_hour_orders:.0f} orders needs {ns0.pickers_at_peak} pickers with category slotting "
+        f"vs {ns1.pickers_at_peak} with velocity-within-category, and {ns1.pack_stations} packing stations.",
     ]
     (ROOT / "results/summary.md").write_text("\n".join(lines_md) + "\n")
     print("\n".join(lines_md))

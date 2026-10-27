@@ -1,4 +1,4 @@
 layout,orders,avg_lines,avg_metres,p90_metres,avg_pick_seconds,walk_saving_pct,time_saving_pct
-category (baseline),19064,7.0,185.2,314.4,285.9,0.0,0.0
-velocity within category,19064,7.0,135.1,231.6,235.8,27.1,17.5
-pure velocity,19064,7.0,133.2,240.0,234.0,28.1,18.2
+category (baseline),19064,7.0,184.3,313.2,285.1,0.0,0.0
+velocity within category,19064,7.0,135.1,231.6,235.8,26.7,17.3
+pure velocity,19064,7.0,133.2,240.0,234.0,27.7,17.9

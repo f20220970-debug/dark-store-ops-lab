@@ -1,0 +1,4 @@
+layout,picker_capacity_per_h,packing_capacity_per_h,max_orders_per_h,binding
+category (baseline),151.5,240.0,151.5,pickers
+velocity within category,183.2,240.0,183.2,pickers
+pure velocity,184.6,240.0,184.6,pickers

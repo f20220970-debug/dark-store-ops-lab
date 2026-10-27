@@ -40,3 +40,26 @@ def test_min_max_ordering():
     skus = R.abc(pd.DataFrame({"product_id": [1, 2, 3], "department": "x", "picks": [900, 90, 10]}))
     mm = R.min_max(skus, 1000).set_index("product_id")
     assert (mm["max_units"] >= mm["min_units"]).all() and mm.loc[1, "abc"] == "A"
+
+
+import capacity_plan as CP  # noqa: E402
+import inventory_accuracy as IA  # noqa: E402
+
+
+def _skus():
+    df = pd.DataFrame({"product_id": range(1, 301), "department": ["produce"] * 100 + ["pantry"] * 200,
+                       "picks": list(range(300, 0, -1))})
+    return R.min_max(R.abc(df), 3000)
+
+
+def test_abc_counting_beats_uniform_with_same_budget():
+    acc = IA.compare(_skus()).set_index("policy")
+    assert acc.loc["abc + exceptions", "pick_weighted_inaccuracy"] <= acc.loc["uniform", "pick_weighted_inaccuracy"]
+    assert abs(acc.filter(like="cause_").iloc[0].sum() - 1) < 1e-9
+
+
+def test_throughput_binding_constraint():
+    t = CP.throughput(pick_seconds=300, pickers=8, stations=3)     # pickers 96/h, packing 240/h
+    assert t["binding"] == "pickers" and t["max_orders_per_h"] == 96
+    s = CP.size_store(2000, 0.08, 1.2, 240)
+    assert s["pickers_at_peak"] >= 1 and s["pack_stations"] >= 1
